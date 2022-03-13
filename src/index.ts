@@ -1,5 +1,3 @@
-import got from "got";
-import { Response } from "got";
 import express from "express";
 import * as Docker from "dockerode";
 
