@@ -10,4 +10,4 @@ RUN ["npm", "install"]
 
 VOLUME [ "/foundry_dashboard_api" ]
 
-ENTRYPOINT ["LISTEN_PORT=$LISTEN_PORT", "npm", "start"]
+ENTRYPOINT ["./entrypoint.sh"]
