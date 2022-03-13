@@ -1,6 +1,6 @@
 FROM node:current-alpine
 
-ARG LISTEN_PORT
+ENV LISTEN_PORT="45321"
 
 WORKDIR /foundry_dashboard_api
 
@@ -10,4 +10,4 @@ RUN ["npm", "install"]
 
 VOLUME [ "/foundry_dashboard_api" ]
 
-ENTRYPOINT ["npm", "start"]
+ENTRYPOINT ["LISTEN_PORT=$LISTEN_PORT", "npm", "start"]
