@@ -1,0 +1,15 @@
+version: "3.7"
+services:
+  foundry_dashboard_api:
+    image: kenishi86/foundry_dashboard_api:latest
+    container_name: foundry_dashboard_api
+    init: true
+    restart: "unless-stopped"
+
+    volumes: /var/run/docker.sock:/var/run/docker.sock
+
+    environment:
+      - LISTEN_PORT=45321
+    
+    ports:
+      - 45321/tcp
