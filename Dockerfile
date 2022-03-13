@@ -8,8 +8,6 @@ ADD ./ /
 
 RUN ["npm", "install"]
 
-EXPOSE $LISTEN_PORT/tcp
-
 VOLUME [ "/foundry_dashboard_api" ]
 
 ENTRYPOINT ["npm", "start"]
