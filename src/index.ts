@@ -1,9 +1,12 @@
 import express from "express";
 import Docker from "dockerode";
+import cors from "cors";
 
 const docker = new Docker({socketPath: "/var/run/docker.sock"});
 const app = express();
 const port = process.env.LISTEN_PORT;
+
+app.use(cors());
 
 const FOUNDRY_CONTAINER_NAME = process.env.FOUNDRY_CONTAINER_NAME;
 
