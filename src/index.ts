@@ -4,17 +4,29 @@ import http from "http";
 import { Server } from "socket.io";
 import Docker, { Container, ContainerInspectInfo, Volume } from "dockerode";
 import cors from "cors";
+import morgan from 'morgan';
+
+const FOUNDRY_API_SOCKET_URL_PATH = "/api/socket.io/";
 
 const docker = new Docker({socketPath: "/var/run/docker.sock"});
 const app = express();
-const server = http.createServer(app);
-const io = new Server(server, { cors: {
-    origin: `http://${process.env.CORS_HOSTNAME}:3000`,
-    methods: ["GET", "POST"]
-  }});
+
+const httpServer = http.createServer(app);
+const io = new Server(httpServer, { 
+    cors: {
+        origin: `http://${process.env.CORS_HOSTNAME}:33000`,
+        methods: ["GET", "POST"],
+    },
+    path: FOUNDRY_API_SOCKET_URL_PATH
+});
 const port = parseInt(process.env.LISTEN_PORT || "0");
 
 app.use(cors());
+
+app.use(morgan('dev'));
+
+const api = express.Router();
+app.use("/api", api);
 
 const FOUNDRY_COMPOSE_FILE_PATH: string = process.env.FOUNDRY_COMPOSE_FILE_PATH!;
 const FOUNDRY_CONTAINER_NAME = process.env.FOUNDRY_CONTAINER_NAME;
@@ -45,7 +57,7 @@ async function getFoundryContainer() : Promise<Container | null> {
     return null;
 }
 
-app.get('/status', async (req, res) => {
+api.get('/status', async (req, res) => {
     // Get container Info
     const foundry = await getFoundryContainer();
     let out = {};
@@ -70,7 +82,7 @@ app.get('/status', async (req, res) => {
     return res.json(out);
 });
 
-app.get('/restart', async (req, res) => {
+api.get('/restart', async (req, res) => {
     const foundry = await getFoundryContainer();
 
     let out = {
@@ -101,7 +113,7 @@ app.get('/restart', async (req, res) => {
     }    
 });
 
-app.get('/logs', async (req, res) => {
+api.get('/logs', async (req, res) => {
     const foundry = await getFoundryContainer();
 
     if(foundry) {
@@ -125,8 +137,9 @@ app.get('/logs', async (req, res) => {
     }
 });
 
-app.get('/update', async (req, res) => {
+api.get('/update', async (req, res) => {
     // Down Foundry Server first
+    console.log("Mounting:", `${FOUNDRY_COMPOSE_FILE_PATH}:/docker_compose.yml:ro`)
     const downResult = await docker.run("docker/compose:1.25.0", ["-f", "/docker_compose.yml", "down"], process.stdout, { 
         "HostConfig": { 
             AutoRemove: true,
@@ -291,7 +304,7 @@ function startLogListening() {
     LOG_LISTENER_CONNECT_INTERVAL = setInterval(establishLogStream, LOG_LISTENER_RETRY_IN_SEC*1000);
 }
 
-server.listen(port, () => {
+httpServer.listen(port, () => {
     console.log(`Foundry Dashboard API listening on port ${port}`)
     startLogListening();
 })
