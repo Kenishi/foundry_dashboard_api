@@ -4,6 +4,7 @@ ENV LISTEN_PORT="45321"
 
 WORKDIR /foundry_dashboard_api
 
+RUN mkdir ./src
 COPY ./src ./src
 COPY ./entrypoint.sh ./*.json .dockerignore ./
 
