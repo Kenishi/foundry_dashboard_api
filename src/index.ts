@@ -4,7 +4,6 @@ import http from "http";
 import { Server } from "socket.io";
 import Docker, { Container, ContainerInspectInfo, Volume } from "dockerode";
 import cors from "cors";
-import protobuf from "protobufjs";
 
 const docker = new Docker({socketPath: "/var/run/docker.sock"});
 const app = express();
