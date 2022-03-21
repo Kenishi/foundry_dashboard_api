@@ -15,9 +15,12 @@ const docker = new Docker({socketPath: "/var/run/docker.sock"});
 const app = express();
 
 const httpServer = http.createServer(app);
+
+const CORS_HOSTNAMES = process.env.CORS_HOSTNAMES?.split(" ");
+const origin = CORS_HOSTNAMES || [""];
 const io = new Server(httpServer, { 
     cors: {
-        origin: `http://${process.env.CORS_HOSTNAME}:33000`,
+        origin: origin,
         methods: ["GET", "POST"],
     },
     path: FOUNDRY_API_SOCKET_URL_PATH
@@ -31,11 +34,11 @@ app.use(morgan('dev'));
 const api = express.Router();
 app.use("/api", api);
 
-const FOUNDRY_CACHE: string = process.env.FOUNDRY_CACHE!;
+const FOUNDRY_CACHE: string = "/foundry_cache"; // If testing outside docker, this needs changed
 const FOUNDRY_COMPOSE_FILE_PATH: string = process.env.FOUNDRY_COMPOSE_FILE_PATH!;
-const FOUNDRY_CONTAINER_NAME = process.env.FOUNDRY_CONTAINER_NAME;
+const FOUNDRY_CONTAINER_NAME = CORS_HOSTNAMES;
 
-console.log("CORS Hostname (Socket.io):", process.env.CORS_HOSTNAME);
+console.log("CORS Hostnames (Socket.io):", origin);
 console.log("Foundry name:", FOUNDRY_CONTAINER_NAME);
 console.log("Foundry Compose Path:", FOUNDRY_COMPOSE_FILE_PATH);
 
