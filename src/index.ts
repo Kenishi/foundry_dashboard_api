@@ -1,10 +1,13 @@
+import fs from "fs/promises";
 import { PassThrough } from "stream";
-import express from "express";
+import express, { json } from "express";
 import http from "http";
 import { Server } from "socket.io";
 import Docker, { Container, ContainerInspectInfo, Volume } from "dockerode";
 import cors from "cors";
 import morgan from 'morgan';
+import fetch from "node-fetch";
+import tar from "tar";
 
 const FOUNDRY_API_SOCKET_URL_PATH = "/api/socket.io/";
 
@@ -28,6 +31,7 @@ app.use(morgan('dev'));
 const api = express.Router();
 app.use("/api", api);
 
+const FOUNDRY_CACHE: string = process.env.FOUNDRY_CACHE!;
 const FOUNDRY_COMPOSE_FILE_PATH: string = process.env.FOUNDRY_COMPOSE_FILE_PATH!;
 const FOUNDRY_CONTAINER_NAME = process.env.FOUNDRY_CONTAINER_NAME;
 
@@ -45,6 +49,31 @@ interface ErrorMessage {
     message: string
 }
 
+const CHECK_IMAGE_VERSIONS_INTERVAL_SEC = 90;
+let availableImageVersions: string[] = [];
+
+type TagItem = {
+    layer: string,
+    name: string
+};
+
+async function checkImageVersionTags() {
+    const response = await fetch('https://registry.hub.docker.com/v1/repositories/felddy/foundryvtt/tags');
+    const json: TagItem[] = await (response.json() as Promise<TagItem[]>);
+
+    // Do stupid check for updating: count, first item, last item check
+    if(!json) {
+        console.log("Response from Docker Hub was null")
+    }
+    else {
+        availableImageVersions = availableImageVersions.length !== json.length ? json.map(item => item.name) : availableImageVersions;
+        availableImageVersions = availableImageVersions[0] !== json[0].name ? json.map(item => item.name) : availableImageVersions;
+        availableImageVersions = availableImageVersions[availableImageVersions.length-1] !== json[json.length-1].name ? json.map(item => item.name) : availableImageVersions;
+    }
+    setTimeout(checkImageVersionTags, CHECK_IMAGE_VERSIONS_INTERVAL_SEC * 1000);
+}
+checkImageVersionTags() // Start the version checking
+
 async function getFoundryContainer() : Promise<Container | null> {
     const containers = await docker.listContainers({ all: true, filters: { name: [`${FOUNDRY_CONTAINER_NAME}`]}});
 
@@ -57,17 +86,74 @@ async function getFoundryContainer() : Promise<Container | null> {
     return null;
 }
 
+async function getAvailableFoundryZipVersions() : Promise<string[]> {
+    const files = await fs.readdir(`${FOUNDRY_CACHE}`);
+
+    const versions = files.map((file) => {
+        const expr = /^foundryvtt-(?<version>\d.\d+).zip/gm;
+        const result = expr.exec(file);
+        const version = result !== null ? result.groups!.version : null;
+        return version;
+    })
+    .filter(v => v !== null);
+
+    return versions as string[];
+}
+
+function readPackageBuffer(packageTar: NodeJS.ReadableStream): Promise<string> {
+    let data: string = "";
+    return new Promise<string>((resolve, rej) => {
+        packageTar
+            .pipe(new tar.Parse({
+                onentry: (entry) => {
+                    if(entry.path !== "package.json") return;
+                    entry.on("data", (chunk) => {
+                        data = data.concat(chunk.toString());
+                    });
+                }
+            }))
+            .on("end", () => {
+                resolve(data);
+            });
+    });
+}
+
+async function getInstalledCurrentVersion(foundry: Container): Promise<string | null> {
+    //  /home/foundryresources/app/package.json
+    const packageTar = await foundry.getArchive({ path: "/home/foundry/resources/app/package.json" });
+    if(packageTar) {
+        const data = await readPackageBuffer(packageTar);
+        const packageJson = JSON.parse(data);    
+        const majorVersion = packageJson.release.generation;
+        const minorVersion = packageJson.release.build;
+
+        console.log(`${majorVersion}.${minorVersion}`);
+        return `${majorVersion}.${minorVersion}`;
+    }
+
+    return null;
+}
+
 api.get('/status', async (req, res) => {
     // Get container Info
     const foundry = await getFoundryContainer();
     let out = {};
     if(foundry) {
+        // Get available foundry server file versions
+        const versions = await getAvailableFoundryZipVersions();
+        const matchingTagAndVersions = versions.filter(v => availableImageVersions.some(tag => tag === v));
+
+        // Get current installed server version
+        const currentVersion = await getInstalledCurrentVersion(foundry!);
+
         const foundry_inspect: ContainerInspectInfo = await foundry.inspect();
         out = {
             data : {
                 started : foundry_inspect.State.StartedAt,
                 state : foundry_inspect.State.Status,
                 name : foundry_inspect.Name,
+                availableZipInstalls: matchingTagAndVersions,
+                currentVersion: currentVersion
             },
             message: "ok",
             statusCode: 200
@@ -138,8 +224,15 @@ api.get('/logs', async (req, res) => {
 });
 
 api.get('/update', async (req, res) => {
+    // Get zip to update
+    if(!req.query.version) return res.status(500).json({
+        statusCode: 500,
+        message: "Zip version required"
+    });
+
+    const version: string = req.query.version! as string;
+
     // Down Foundry Server first
-    console.log("Mounting:", `${FOUNDRY_COMPOSE_FILE_PATH}:/docker_compose.yml:ro`)
     const downResult = await docker.run("docker/compose:1.25.0", ["-f", "/docker_compose.yml", "down"], process.stdout, { 
         "HostConfig": { 
             AutoRemove: true,
@@ -169,12 +262,13 @@ api.get('/update', async (req, res) => {
         else {
             clearInterval(interval);
             const upResult = await docker.run("docker/compose:1.25.0", ["-f", "/docker_compose.yml", "up", "-d"], process.stdout, {
+                "Env": [`TAG_VERSION=${version}`],
                 "HostConfig": { 
                     AutoRemove: true ,
                     Binds: [
                         `${FOUNDRY_COMPOSE_FILE_PATH}:/docker_compose.yml:ro`,
                         "/var/run/docker.sock:/var/run/docker.sock"
-                    ]
+                    ],
                 }
             });
             
