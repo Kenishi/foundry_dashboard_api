@@ -17,6 +17,7 @@ const app = express();
 const httpServer = http.createServer(app);
 
 const CORS_HOSTNAMES = process.env.CORS_HOSTNAMES?.split(" ");
+console.log("CORS HOSTNAMES:", process.env.CORS_HOSTNAMES);
 const origin = CORS_HOSTNAMES || [""];
 const io = new Server(httpServer, { 
     cors: {
@@ -36,9 +37,9 @@ app.use("/api", api);
 
 const FOUNDRY_CACHE: string = "/foundry_cache"; // If testing outside docker, this needs changed
 const FOUNDRY_COMPOSE_FILE_PATH: string = process.env.FOUNDRY_COMPOSE_FILE_PATH!;
-const FOUNDRY_CONTAINER_NAME = CORS_HOSTNAMES;
+const FOUNDRY_CONTAINER_NAME = process.env.FOUNDRY_CONTAINER_NAME;
 
-console.log("CORS Hostnames (Socket.io):", origin);
+console.log("CORS Origin (Socket.io):", origin);
 console.log("Foundry name:", FOUNDRY_CONTAINER_NAME);
 console.log("Foundry Compose Path:", FOUNDRY_COMPOSE_FILE_PATH);
 
@@ -103,39 +104,11 @@ async function getAvailableFoundryZipVersions() : Promise<string[]> {
     return versions as string[];
 }
 
-function readPackageBuffer(packageTar: NodeJS.ReadableStream): Promise<string> {
-    let data: string = "";
-    return new Promise<string>((resolve, rej) => {
-        packageTar
-            .pipe(new tar.Parse({
-                onentry: (entry) => {
-                    if(entry.path !== "package.json") return;
-                    entry.on("data", (chunk) => {
-                        data = data.concat(chunk.toString());
-                    });
-                }
-            }))
-            .on("end", () => {
-                resolve(data);
-            });
-    });
-}
-
 async function getInstalledCurrentVersion(foundry: Container): Promise<string | null> {
-    //  /home/foundryresources/app/package.json
-    const packageTar = await foundry.getArchive({ path: "/home/foundry/resources/app/package.json" });
-    if(packageTar) {
-        const data = await readPackageBuffer(packageTar);
-        const packageJson = JSON.parse(data);    
-        const majorVersion = packageJson.release.generation;
-        const minorVersion = packageJson.release.build;
-
-        console.log(`${majorVersion}.${minorVersion}`);
-        return `${majorVersion}.${minorVersion}`;
-    }
-
-    return null;
+    const inspect = await foundry.inspect();
+    return inspect.Config.Labels["com.foundryvtt.version"];
 }
+
 
 api.get('/status', async (req, res) => {
     // Get container Info
