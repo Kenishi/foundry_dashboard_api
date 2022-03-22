@@ -7,7 +7,6 @@ import Docker, { Container, ContainerInspectInfo, Volume } from "dockerode";
 import cors from "cors";
 import morgan from 'morgan';
 import fetch from "node-fetch";
-import tar from "tar";
 
 const FOUNDRY_API_SOCKET_URL_PATH = "/api/socket.io/";
 
