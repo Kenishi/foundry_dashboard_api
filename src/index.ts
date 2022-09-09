@@ -74,7 +74,6 @@ async function fetchImageTags(): Promise<TagItem[]> {
         do {
             response = await fetch(nextUrl);
             j = (await response.json()) as DockerResponse;
-            console.log(j.results);
             tags = j.results.length > 0 ? [...tags, ...j.results] : tags;
             nextUrl = j.next;
         } while(j.next !== null)
@@ -118,7 +117,8 @@ async function getAvailableFoundryZipVersions() : Promise<string[]> {
     const files = await fs.readdir(`${FOUNDRY_CACHE}`);
 
     const versions = files.map((file) => {
-        const expr = /^foundryvtt-(?<version>\d.\d+).zip/gm;
+        console.log("Foundry cache file: ", file);
+        const expr = /^foundryvtt-(?<version>\d+.\d+).zip/gm;
         const result = expr.exec(file);
         const version = result !== null ? result.groups!.version : null;
         return version;
@@ -141,7 +141,10 @@ api.get('/status', async (req, res) => {
     if(foundry) {
         // Get available foundry server file versions
         const versions = await getAvailableFoundryZipVersions();
+        console.log("Available versions:", versions);
+        console.log("Available docker images:", availableImageVersions);
         const matchingTagAndVersions = versions.filter(v => availableImageVersions.some(tag => tag === v));
+        console.log("Matching Tag & Versions:", matchingTagAndVersions);
 
         // Get current installed server version
         const currentVersion = await getInstalledCurrentVersion(foundry!);
