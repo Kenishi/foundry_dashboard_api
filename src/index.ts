@@ -56,13 +56,38 @@ const CHECK_IMAGE_VERSIONS_INTERVAL_SEC = 90;
 let availableImageVersions: string[] = [];
 
 type TagItem = {
-    layer: string,
     name: string
 };
 
+interface DockerResponse {
+    count: number,
+    next: string,
+    results: TagItem[]
+}
+
+async function fetchImageTags(): Promise<TagItem[]> {
+    let response;
+    let tags: TagItem[] = [];
+    try {
+        let j: DockerResponse;
+        let nextUrl = "https://registry.hub.docker.com/v2/repositories/felddy/foundryvtt/tags?page_size=100"
+        do {
+            response = await fetch(nextUrl);
+            j = (await response.json()) as DockerResponse;
+            console.log(j.results);
+            tags = j.results.length > 0 ? [...tags, ...j.results] : tags;
+            nextUrl = j.next;
+        } while(j.next !== null)
+    } catch(e) {
+        console.error(response);
+        console.error(e);
+        tags = [];
+    }
+    return tags;
+}
+
 async function checkImageVersionTags() {
-    const response = await fetch('https://registry.hub.docker.com/v1/repositories/felddy/foundryvtt/tags');
-    const json: TagItem[] = await (response.json() as Promise<TagItem[]>);
+    let json: TagItem[] | null = await fetchImageTags();
 
     // Do stupid check for updating: count, first item, last item check
     if(!json) {
@@ -73,7 +98,7 @@ async function checkImageVersionTags() {
         availableImageVersions = availableImageVersions[0] !== json[0].name ? json.map(item => item.name) : availableImageVersions;
         availableImageVersions = availableImageVersions[availableImageVersions.length-1] !== json[json.length-1].name ? json.map(item => item.name) : availableImageVersions;
     }
-    setTimeout(checkImageVersionTags, CHECK_IMAGE_VERSIONS_INTERVAL_SEC * 1000);
+    setTimeout(checkImageVersionTags, CHECK_IMAGE_VERSIONS_INTERVAL_SEC * 5000);
 }
 checkImageVersionTags() // Start the version checking
 
